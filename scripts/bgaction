@@ -1,14 +1,48 @@
 #!/usr/bin/bash
+set -euo pipefail
 
-#start swwww
-swww query || swww init
+LOG="$HOME/.config/hypr/scripts/bgaction.log"
+echo "$(date --iso-8601=seconds) bgaction start" >> "$LOG"
 
-#figure out which waybar theme is set
-THEMEIS=$(readlink -f ~/.config/waybar/style.css | cut -d '-' -f2)
-
-#show the correct wallpapper based on the theme
-if [ $THEMEIS == "dark.css" ]; then
-    swww img ~/.config/hypr/wallpaper-dark.jpg
+# start swww if available; ensure the daemon runs
+if command -v swww >/dev/null 2>&1; then
+    if ! pgrep -x swww-daemon >/dev/null 2>&1 && command -v swww-daemon >/dev/null 2>&1; then
+        swww-daemon >/dev/null 2>&1 &
+        sleep 0.25
+        echo "started swww-daemon" >> "$LOG"
+    fi
+    # query will fail if daemon not ready; ignore errors
+    swww query >/dev/null 2>&1 || true
 else
-    swww img ~/.config/hypr/wallpaper.jpg
+    echo "swww not found in PATH" >> "$LOG"
 fi
+
+# figure out which waybar theme is set
+STYLE_LINK=$(readlink -f "$HOME/.config/waybar/style.css" 2>/dev/null || true)
+THEMEIS=$(basename "$STYLE_LINK" | cut -d '-' -f2 || true)
+echo "STYLE_LINK=$STYLE_LINK THEMEIS=$THEMEIS" >> "$LOG"
+
+# wallpaper paths
+DARK="$HOME/.config/hypr/wallpaper-dark.jpg"
+LIGHT="$HOME/.config/hypr/wallpaper.jpg"
+
+wallpaper=""
+if [ "$THEMEIS" = "dark.css" ] && [ -f "$DARK" ]; then
+    wallpaper="$DARK"
+elif [ -f "$LIGHT" ]; then
+    wallpaper="$LIGHT"
+fi
+
+if [ -n "$wallpaper" ]; then
+    if command -v swww >/dev/null 2>&1; then
+        swww img "$wallpaper"
+        echo "Set wallpaper: $wallpaper" >> "$LOG"
+    else
+        echo "No swww; wallpaper available: $wallpaper" >> "$LOG"
+    fi
+else
+    echo "No wallpaper found: looked for $DARK and $LIGHT" >> "$LOG"
+fi
+
+echo "$(date --iso-8601=seconds) bgaction end" >> "$LOG"
+exit 0
